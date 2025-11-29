@@ -3,6 +3,7 @@ const Binance = BinanceModule.default;
 const client = Binance();
 
 const INTERVALO = '5m'; // Intervalo de scalping: 5 minutos
+const LIMITE = 200;     // Un límite alto (200 o más) para asegurar datos suficientes para indicadores
 
 /**
  * 📢 Función de Prueba de Conexión.
@@ -30,7 +31,7 @@ async function obtenerDatosVela(symbol) {
         const klines = await client.candles({
             symbol: symbol,
             interval: INTERVALO,
-            limit: 100 // Datos necesarios para calcular correctamente los indicadores (RSI, MAs)
+            limit: LIMITE // Datos necesarios para calcular correctamente los indicadores (RSI, MAs)
         });
         
         console.log(`Datos de ${symbol} obtenidos con éxito.`);

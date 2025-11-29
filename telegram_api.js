@@ -1,54 +1,52 @@
 // Importamos la librería node-telegram-bot-api
 import TelegramBot from 'node-telegram-bot-api';
-import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Creamos una constante que guarda el Token de nuestro Bot de Telegram que previamente hemos creado desde el bot @BotFather
-const token = process.env.API_KEY_Telegram;
-const chatId = '-1003448654958'; // Asegúrate de que este ID sea donde quieres recibir la alerta
+let bot; // Instancia global del bot.
+let botChatId; // Almacenamos el Chat ID globalmente
 
-// Create a bot that uses 'polling' to fetch new updates
-const bot = new TelegramBot(token, { polling: true });
+/**
+ * Inicializa el cliente de Telegram con la configuración necesaria.
+ * Se llama UNA VEZ al inicio de la aplicación desde index.js.
+ * @param {Object} config Objeto de configuración cargado desde la base de datos.
+ */
+function inicializarBot(config) {
+    const token = process.env.API_KEY_Telegram; // Se mantiene en .env por seguridad
+
+    if (!token) {
+        throw new Error("ERROR: La variable de entorno API_KEY_Telegram no está definida.");
+    }
+
+    // Obtenemos el Chat ID de la configuración (debe existir en la DB)
+    const chatIdDesdeDB = config.telegram_chat_id;
+
+    if (!chatIdDesdeDB) {
+        throw new Error("ERROR: El parámetro 'telegram_chat_id' no se encontró en la base de datos.");
+    }
+
+    botChatId = String(chatIdDesdeDB); // Convertimos a string para asegurar el formato correcto
+    bot = new TelegramBot(token, { polling: false }); // Usamos polling: false para un bot de solo envío.
+}
 
 /**
  * Función para enviar la alerta de trading
  * @param {string} par El par de trading (ej. 'BTCUSDT')
  * @param {string} direccion LONG o SHORT
  * @param {number} rsi El valor actual del RSI
+ * @param {Object} config La configuración completa (para obtener otros detalles si es necesario)
  */
 
 
-//Obtener el Chat ID
-const getChatId = async () => {
-    const url = `https://api.telegram.org/bot${process.env.API_KEY_Telegram}/getUpdates`;
-    try {
-        const response = await axios.get(url);
-        console.log("Respuesta completa:", response.data);
-
-        if (response.data.ok && response.data.result.length > 0) {
-            const chatId = response.data.result[0].message.chat.id;
-            console.log("Chat ID encontrado:", chatId);
-            return chatId;
-        } else {
-            console.log("No hay mensajes recientes. Envía un mensaje al bot primero.");
-        }
-    } catch (error) {
-        console.error("Error al obtener el chat_id:", error.response?.data || error.message);
+const enviarAlerta = (par, direccion, rsi, config) => {
+    if (!bot) {
+        console.error("❌ Error: El bot de Telegram no ha sido inicializado. Ejecute primero inicializarBot().");
+        return;
     }
-};
 
-
-
-const enviarAlerta = (par, direccion, rsi) => {
-    
-    /*
-    setTimeout(() => {
-        const chatIdV2 = getChatId();
-        console.log("ID del chat obtenido:", chatIdV2);
-    }, 1000); // Retraso de 1 segundo (ajusta según necesidad)
-*/
+    // Aquí puedes incluir más detalles configurables, como el margen o apalancamiento
+    // del par específico (tendremos que calcularlo en motor_principal.js)
 
     const mensaje = `
 🚨 **ALERTA SCALPING - ${par}** 🚨
@@ -57,18 +55,18 @@ const enviarAlerta = (par, direccion, rsi) => {
 **Motivo:** Volumen alto y RSI en extremo.
 ➡️ ¡Revisar manual para ejecución!
 `;
-    
-    // El 'parse_mode: 'Markdown'' permite usar negritas (**) y emojis
-    bot.sendMessage(chatId, mensaje, { parse_mode: 'Markdown' })
+
+    // Usamos la variable global botChatId que se configuró en la inicialización
+    bot.sendMessage(botChatId, mensaje, { parse_mode: 'Markdown' })
         .then(() => {
-            console.log(`Alerta enviada a Telegram para ${par}`);
+            // console.log(`Alerta enviada a Telegram para ${par}`);
         })
         .catch((error) => {
-            console.error('Error al enviar alerta a Telegram:', error.response.body);
+            console.error('❌ Error al enviar alerta a Telegram:', error.response?.body || error.message);
         });
 }
 
-export { enviarAlerta }
+export { inicializarBot, enviarAlerta };
 
 // Ejemplo de uso (simulando una detección)
 // enviarAlerta('ETHUSDT', 'LONG', 28.55);

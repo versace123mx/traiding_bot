@@ -33,8 +33,8 @@ async function obtenerConfiguracion() {
         // Mapea el array de filas a un objeto de fácil acceso (ej. { apalancamiento: 20, margen_usdt: 50, ... })
         const config = {};
         for (const row of rows) {
-            // Convierte el valor a número (float)
-            config[row.nombre_parametro] = parseFloat(row.valor);
+            // Ya no usamos parseFloat aquí. Todos los valores se cargan como string.
+            config[row.nombre_parametro] = row.valor;
         }
         return config;
     } catch (error) {
@@ -51,8 +51,9 @@ async function obtenerConfiguracion() {
 async function guardarNuevaOperacion(opData) {
     const query = `
         INSERT INTO OperacionesSimuladas 
-        (timestamp_entrada, par_trading, direccion, tamano_posicion, precio_entrada, rsi_entrada, volumen_entrada, id_estado)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (timestamp_entrada, par_trading, direccion, tamano_posicion, precio_entrada, 
+        rsi_entrada, volumen_entrada, sl_actual, breakeven_activado, id_estado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const values = [
         opData.timestamp_entrada,
@@ -62,6 +63,8 @@ async function guardarNuevaOperacion(opData) {
         opData.precio_entrada,
         opData.rsi_entrada,
         opData.volumen_entrada,
+        opData.sl_actual,           // <-- NUEVO: SL Inicial
+        0,                          // <-- NUEVO: Breakeven Desactivado (0)
         opData.id_estado // Debe ser 1 (Abierta)
     ];
 
@@ -80,7 +83,8 @@ async function guardarNuevaOperacion(opData) {
  */
 async function obtenerOperacionesAbiertas() {
     const query = `
-        SELECT id_op, par_trading, direccion, precio_entrada, tamano_posicion
+        SELECT id_op, par_trading, direccion, precio_entrada, tamano_posicion, 
+            sl_actual, breakeven_activado 
         FROM OperacionesSimuladas 
         WHERE id_estado = 1
     `;
@@ -120,10 +124,33 @@ async function actualizarOperacion(opId, cierreData) {
     }
 }
 
+/**
+ * 5. NUEVA FUNCIÓN: Actualiza el Stop Loss (SL) y el estado de Breakeven.
+ * Se usa cuando la operación alcanza el profit inicial requerido para mover el SL.
+ * @param {number} opId El ID de la operación a actualizar.
+ * @param {number} slNuevo El nuevo precio de SL (generalmente el precio de entrada).
+ * @param {number} breakevenActivado 1 para indicar que el Breakeven ya está activo.
+ * @returns {Promise<void>}
+ */
+async function actualizarSLBreakeven(opId, slNuevo, breakevenActivado) {
+    const query = `
+        UPDATE OperacionesSimuladas 
+        SET sl_actual = ?, breakeven_activado = ?
+        WHERE id_op = ? AND id_estado = 1
+    `;
+    const values = [slNuevo, breakevenActivado, opId];
+
+    try {
+        await pool.query(query, values);
+    } catch (error) {
+        console.error(`❌ Error al actualizar SL de operación ${opId} en la DB:`, error);
+    }
+}
 
 export default {
     obtenerConfiguracion,
     guardarNuevaOperacion,
     obtenerOperacionesAbiertas,
-    actualizarOperacion
+    actualizarOperacion,
+    actualizarSLBreakeven // <-- NUEVA FUNCIÓN EXPORTADA
 };
